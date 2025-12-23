@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shoily vs Thoughts</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<style>
+body {
+  margin: 0;
+  height: 100vh;
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+  text-align: center;
+  background:
+    linear-gradient(rgba(0,0,0,.3), rgba(0,0,0,.6)),
+    url("background.png") center/cover no-repeat;
+  overflow: hidden;
+}
+
+h1 { margin: 10px 0; }
+
+#menu { margin-top: 80px; }
+
+select, button {
+  padding: 10px 20px;
+  border-radius: 20px;
+  border: none;
+  font-size: 16px;
+  margin: 10px;
+}
+
+button { background: #ffb6c1; }
+
+#ui {
+  width: 95vw;
+  max-width: 620px;
+  margin: auto;
+  padding: 10px;
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(8px);
+  border-radius: 15px;
+  display: none;
+}
+
+#stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+#health {
+  height: 14px;
+  background: #400;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+#healthInner {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff99, #00cc66);
+  width: 100%;
+}
+
+canvas {
+  display: none;
+  margin: 10px auto;
+  border-radius: 15px;
+  border: 3px solid #ffb6c1;
+  background: rgba(15,23,42,0.7);
+  width: 95vw;
+  max-width: 600px;
+  touch-action: none;
+}
+
+#touchControls {
+  display: none;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+#touchControls button {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  font-size: 24px;
+}
+
+#autoFireBtn {
+  background: #ff6b9c;
+}
+
+#end { display: none; margin-top: 80px; }
+</style>
+</head>
+
+<body>
+
+<div id="menu">
+  <h1>🌸 Shoily vs Thoughts 🌸</h1>
+  <p>Choose Difficulty</p>
+  <select id="difficulty">
+    <option value="1">Easy</option>
+    <option value="1.5" selected>Normal</option>
+    <option value="2">Hard</option>
+  </select><br>
+  <button onclick="startGame()">Start Game</button>
+</div>
+
+<div id="ui">
+  <div id="stats">
+    <div>Score: <span id="score">0</span></div>
+    <div>Combo: x<span id="combo">1</span></div>
+    <div>Time: <span id="time">0</span>s</div>
+  </div>
+  <div id="health"><div id="healthInner"></div></div>
+</div>
+
+<canvas id="game" width="600" height="500"></canvas>
+
+<div id="touchControls">
+  <button id="leftBtn">◀</button>
+  <button id="shootBtn">🔥</button>
+  <button id="rightBtn">▶</button>
+  <button id="autoFireBtn">AUTO</button>
+</div>
+
+<div id="end">
+  <h2>🎉 Happy Birthday Shoily 🎉</h2>
+  <p>Final Score: <span id="finalScore"></span></p>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const shoilyImg = new Image();
+shoilyImg.src = "shoily.png";
+
+let bullets=[], enemyBullets=[], enemies=[];
+let keys={}, running=false, bossSpawned=false;
+let score=0, combo=1, comboTimer=0, time=0, health=100;
+let difficulty=1, autoFire=false, fireCooldown=0;
+
+const shoily = { x:270, y:390, w:60, h:90, speed:5 };
+
+const scoreEl = scoreSpan = document.getElementById("score");
+const comboEl = document.getElementById("combo");
+const timeEl = document.getElementById("time");
+const healthBar = document.getElementById("healthInner");
+
+// FULLSCREEN (mobile)
+function goFullscreen() {
+  if (document.documentElement.requestFullscreen)
+    document.documentElement.requestFullscreen();
+}
+
+// Keyboard
+document.addEventListener("keydown", e => keys[e.code]=true);
+document.addEventListener("keyup", e => keys[e.code]=false);
+
+// Touch buttons
+const leftBtn = document.getElementById("leftBtn");
+const rightBtn = document.getElementById("rightBtn");
+const shootBtn = document.getElementById("shootBtn");
+const autoFireBtn = document.getElementById("autoFireBtn");
+
+function bindTouch(btn,key){
+  btn.addEventListener("touchstart",e=>{e.preventDefault();keys[key]=true;});
+  btn.addEventListener("touchend",e=>{e.preventDefault();keys[key]=false;});
+}
+
+bindTouch(leftBtn,"ArrowLeft");
+bindTouch(rightBtn,"ArrowRight");
+
+shootBtn.addEventListener("touchstart",e=>{
+  e.preventDefault();
+  shoot();
+});
+
+autoFireBtn.addEventListener("click",()=>{
+  autoFire=!autoFire;
+  autoFireBtn.textContent = autoFire ? "AUTO ON" : "AUTO";
+});
+
+// Swipe move
+let touchX=null;
+canvas.addEventListener("touchstart",e=>touchX=e.touches[0].clientX);
+canvas.addEventListener("touchmove",e=>{
+  shoily.x += (e.touches[0].clientX-touchX)*0.15;
+  touchX=e.touches[0].clientX;
+});
+
+function startGame(){
+  difficulty=parseFloat(document.getElementById("difficulty").value);
+  document.getElementById("menu").style.display="none";
+  document.getElementById("ui").style.display="block";
+  canvas.style.display="block";
+  document.getElementById("touchControls").style.display="flex";
+  goFullscreen();
+  spawnEnemies();
+  running=true;
+  loop();
+}
+
+function spawnEnemies(){
+  enemies=[
+    {x:80,y:60,w:100,h:40,hp:3,dir:1},
+    {x:240,y:60,w:100,h:40,hp:3,dir:1},
+    {x:400,y:60,w:120,h:40,hp:3,dir:1}
+  ];
+}
+
+function spawnBoss(){
+  enemies.push({x:180,y:40,w:240,h:60,hp:12*difficulty,boss:true,dir:1});
+  bossSpawned=true;
+}
+
+function shoot(){
+  bullets.push({x:shoily.x+30,y:shoily.y,speed:8});
+  if(navigator.vibrate) navigator.vibrate(30); // vibration
+}
+
+function update(){
+  if(!running)return;
+
+  time+=1/60; timeEl.textContent=Math.floor(time);
+
+  if(keys["ArrowLeft"]) shoily.x-=shoily.speed;
+  if(keys["ArrowRight"]) shoily.x+=shoily.speed;
+
+  if(autoFire && fireCooldown<=0){
+    shoot();
+    fireCooldown=12;
+  }
+  fireCooldown--;
+
+  shoily.x=Math.max(0,Math.min(540,shoily.x));
+
+  bullets.forEach(b=>b.y-=b.speed);
+  bullets=bullets.filter(b=>b.y>0);
+
+  enemies.forEach(e=>{
+    e.x+=e.dir*difficulty;
+    if(e.x<=0||e.x+e.w>=600)e.dir*=-1;
+  });
+
+  bullets.forEach((b,bi)=>{
+    enemies.forEach((e,ei)=>{
+      if(b.x>e.x&&b.x<e.x+e.w&&b.y>e.y&&b.y<e.y+e.h){
+        e.hp--; bullets.splice(bi,1);
+        score+=100*combo;
+        combo=Math.min(combo+1,5);
+        comboTimer=60;
+        if(navigator.vibrate) navigator.vibrate(50);
+        if(e.hp<=0) enemies.splice(ei,1);
+      }
+    });
+  });
+
+  if(comboTimer--<=0) combo=1;
+
+  healthBar.style.width=health+"%";
+  scoreEl.textContent=score;
+  comboEl.textContent=combo;
+
+  if(enemies.length===0&&!bossSpawned) spawnBoss();
+
+  if(enemies.length===0&&bossSpawned){
+    running=false;
+    document.getElementById("end").style.display="block";
+    document.getElementById("finalScore").textContent=score;
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,600,500);
+  ctx.drawImage(shoilyImg,shoily.x,shoily.y,shoily.w,shoily.h);
+  ctx.fillStyle="#ff4d6d";
+  bullets.forEach(b=>ctx.fillRect(b.x,b.y,5,10));
+  enemies.forEach(e=>{
+    ctx.fillStyle=e.boss?"#ff006e":"#ffd166";
+    ctx.fillRect(e.x,e.y,e.w,e.h);
+  });
+}
+
+function loop(){
+  update(); draw();
+  if(running) requestAnimationFrame(loop);
+}
+</script>
+
+</body>
+</html>
